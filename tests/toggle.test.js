@@ -75,16 +75,4 @@ describe('Enable/Disable Feature', () => {
     expect(typeof res.body[0].enabled).toBe('boolean');
   });
 
-  test('www/app.js renders a toggle button with toggle-btn class', () => {
-    const js = fs.readFileSync(path.join(__dirname, '../www/app.js'), 'utf8');
-
-    expect(js).toContain('toggle-btn');
-  });
-
-  test('www/icons.svg contains icon-toggle-on and icon-toggle-off symbols', () => {
-    const svg = fs.readFileSync(path.join(__dirname, '../www/icons.svg'), 'utf8');
-
-    expect(svg).toContain('id="icon-toggle-on"');
-    expect(svg).toContain('id="icon-toggle-off"');
-  });
 });

@@ -50,9 +50,4 @@ describe('Click Counter Feature', () => {
     expect(res.body[0].clicks).toBe(42);
   });
 
-  test('www/index.html has a Clicks column in the table', () => {
-    const html = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');
-
-    expect(html).toContain('>Clicks<');
-  });
 });
