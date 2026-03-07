@@ -33,6 +33,11 @@ app.get('/r/:code', async (req, res) => {
   return res.redirect(302, url);
 });
 
+app.get('/urls', async (req, res) => {
+  const entries = await redis.list();
+  return res.status(200).json(entries);
+});
+
 app.delete('/r/:code', async (req, res) => {
   const deleted = await redis.del(req.params.code);
   if (!deleted) {

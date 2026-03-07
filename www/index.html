@@ -274,7 +274,7 @@
     </div>
     <div class="stat">
       <div class="stat-value" id="stat-custom">0</div>
-      <div class="stat-label">Custom Codes</div>
+      <div class="stat-label">Active in Redis</div>
     </div>
     <div class="stat">
       <div class="stat-value" id="stat-today">0</div>
@@ -377,21 +377,26 @@
 
 <script>
   // ─── State ───────────────────────────────────────────────────────────────
-  const STORE_KEY = 'url_shortener_urls';
-  let urls = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+  let urls = [];
   let pendingDeleteCode = null;
 
-  function save() {
-    localStorage.setItem(STORE_KEY, JSON.stringify(urls));
-    render();
-    updateStats();
-  }
-
-  // ─── API base: auto-detect same origin when served from /ui ──────────────
+  // ─── API base ────────────────────────────────────────────────────────────
   function apiBase() {
     const stored = document.getElementById('api-base').value.trim().replace(/\/$/, '');
-    if (stored) return stored;
-    return window.location.origin;
+    return stored || window.location.origin;
+  }
+
+  // ─── Load from API ───────────────────────────────────────────────────────
+  async function loadURLs() {
+    try {
+      const r = await fetch(`${apiBase()}/urls`, { signal: AbortSignal.timeout(5000) });
+      if (!r.ok) return;
+      urls = await r.json();
+      render();
+      updateStats();
+    } catch {
+      // silently fail — health check will show status
+    }
   }
 
   async function checkHealth() {
@@ -401,12 +406,14 @@
       const r = await fetch(`${apiBase()}/health`, { signal: AbortSignal.timeout(3000) });
       dot.className = 'dot' + (r.ok ? ' online' : '');
       txt.textContent = r.ok ? 'API online' : `API error (${r.status})`;
+      if (r.ok) loadURLs();
     } catch {
       dot.className = 'dot';
       txt.textContent = 'API unreachable';
     }
   }
 
+  // ─── Create ──────────────────────────────────────────────────────────────
   async function createURL() {
     const urlInput = document.getElementById('input-url');
     const codeInput = document.getElementById('input-code');
@@ -433,22 +440,10 @@
       const data = await r.json();
       if (!r.ok) { toast(data.error || `Error ${r.status}`, 'error'); return; }
 
-      const entry = {
-        code: data.code,
-        short: data.short,
-        url,
-        customCode: !!customCode,
-        createdAt: new Date().toISOString(),
-      };
-
-      const idx = urls.findIndex(u => u.code === entry.code);
-      if (idx >= 0) urls[idx] = entry;
-      else urls.unshift(entry);
-
-      save();
       toast(`/${data.code} created`, 'success');
       urlInput.value = '';
       codeInput.value = '';
+      await loadURLs();
     } catch {
       toast('Could not reach API. Is the server running?', 'error');
     } finally {
@@ -482,12 +477,9 @@
       const data = await r.json();
       if (!r.ok) { toast(data.error || `Error ${r.status}`, 'error'); return; }
 
-      const idx = urls.findIndex(u => u.code === code);
-      if (idx >= 0) { urls[idx].url = newUrl; urls[idx].updatedAt = new Date().toISOString(); }
-
-      save();
       closeModal();
       toast(`/${code} updated`, 'success');
+      await loadURLs();
     } catch {
       toast('Could not reach API', 'error');
     }
@@ -521,9 +513,8 @@
       return;
     }
 
-    urls = urls.filter(u => u.code !== code);
-    save();
     toast(`/${code} deleted`, 'success');
+    await loadURLs();
   }
 
   // ─── Modal ───────────────────────────────────────────────────────────────
@@ -550,16 +541,19 @@
     empty.style.display = 'none';
 
     tbody.innerHTML = urls.map(entry => {
-      const full = apiBase() + entry.short;
-      const date = new Date(entry.updatedAt || entry.createdAt);
-      const dateStr = date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+      const short = `/r/${entry.code}`;
+      const full = apiBase() + short;
+      const date = entry.createdAt ? new Date(entry.createdAt) : null;
+      const dateStr = date
+        ? date.toLocaleDateString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+        : '—';
 
       return `<tr>
         <td class="url-cell">
           <a href="${esc(entry.url)}" target="_blank" rel="noopener" class="url-text" title="${esc(entry.url)}">${esc(entry.url)}</a>
         </td>
         <td>
-          <a href="${esc(full)}" target="_blank" rel="noopener" class="short-link">${esc(entry.short)}</a>
+          <a href="${esc(full)}" target="_blank" rel="noopener" class="short-link">${esc(short)}</a>
         </td>
         <td style="color:var(--muted);font-size:.78rem;white-space:nowrap">${dateStr}</td>
         <td>
@@ -585,9 +579,9 @@
   function updateStats() {
     const today = new Date().toDateString();
     document.getElementById('stat-total').textContent = urls.length;
-    document.getElementById('stat-custom').textContent = urls.filter(u => u.customCode).length;
+    document.getElementById('stat-custom').textContent = '—';
     document.getElementById('stat-today').textContent = urls.filter(u =>
-      new Date(u.createdAt).toDateString() === today
+      u.createdAt && new Date(u.createdAt).toDateString() === today
     ).length;
   }
 
@@ -622,8 +616,6 @@
   }
 
   // ─── Init ────────────────────────────────────────────────────────────────
-  render();
-  updateStats();
   checkHealth();
   setInterval(checkHealth, 30000);
 
