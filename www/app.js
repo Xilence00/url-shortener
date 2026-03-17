@@ -21,17 +21,53 @@ async function checkHealth() {
     const r = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
     dot.className = 'dot' + (r.ok ? ' online' : '');
     txt.textContent = r.ok ? 'API online' : `API error (${r.status})`;
-    if (r.ok) loadURLs();
+    if (r.ok) {
+      loadURLs();
+      loadInfo();
+    }
   } catch {
     dot.className = 'dot';
     txt.textContent = 'API unreachable';
   }
 }
 
+async function loadInfo() {
+  try {
+    const r = await fetch('/api/info', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return;
+    const data = await r.json();
+
+    const studentIdEl = document.getElementById('student-id');
+    const buildTimeEl = document.getElementById('build-time');
+
+    if (studentIdEl) studentIdEl.textContent = data.studentId || 'NOT_SET';
+    if (buildTimeEl) {
+      const buildTime = data.buildTime || 'NOT_SET';
+      if (buildTime !== 'NOT_SET') {
+        const date = new Date(buildTime);
+        buildTimeEl.textContent = date.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      } else {
+        buildTimeEl.textContent = buildTime;
+      }
+    }
+  } catch {
+    // silently fail
+  }
+}
+
 // ─── Create ──────────────────────────────────────────────────────────────
 async function createURL() {
   const urlInput = document.getElementById('input-url');
+  const codeInput = document.getElementById('input-code');
   const url = urlInput.value.trim();
+  const customCode = codeInput.value.trim();
 
   if (!url) { toast('Please enter a destination URL', 'error'); return; }
   if (!/^https?:\/\//i.test(url)) { toast('URL must start with http:// or https://', 'error'); return; }
@@ -40,10 +76,13 @@ async function createURL() {
   btn.disabled = true;
 
   try {
+    const body = { url };
+    if (customCode) body.customCode = customCode;
+
     const r = await fetch('/api/shorten', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
     });
 
@@ -52,6 +91,7 @@ async function createURL() {
 
     toast(`/${data.code} created`, 'success');
     urlInput.value = '';
+    codeInput.value = '';
     await loadURLs();
   } catch {
     toast('Could not reach API. Is the server running?', 'error');
@@ -186,6 +226,7 @@ function render() {
       <td>
         <a href="${esc(full)}" target="_blank" rel="noopener" class="short-link">${esc(short)}</a>
       </td>
+      <td style="text-align:right;font-size:.82rem;color:var(--muted);font-variant-numeric:tabular-nums">${entry.clicks ?? 0}</td>
       <td style="color:var(--muted);font-size:.78rem;white-space:nowrap">${dateStr}</td>
       <td>
         <div class="actions">
@@ -238,6 +279,8 @@ function toast(msg, type = 'info') {
 checkHealth();
 setInterval(checkHealth, 30000);
 
-document.getElementById('input-url').addEventListener('keydown', e => {
-  if (e.key === 'Enter') createURL();
+['input-url', 'input-code'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') createURL();
+  });
 });
