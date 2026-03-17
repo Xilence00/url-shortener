@@ -21,10 +21,44 @@ async function checkHealth() {
     const r = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
     dot.className = 'dot' + (r.ok ? ' online' : '');
     txt.textContent = r.ok ? 'API online' : `API error (${r.status})`;
-    if (r.ok) loadURLs();
+    if (r.ok) {
+      loadURLs();
+      loadInfo();
+    }
   } catch {
     dot.className = 'dot';
     txt.textContent = 'API unreachable';
+  }
+}
+
+async function loadInfo() {
+  try {
+    const r = await fetch('/api/info', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return;
+    const data = await r.json();
+
+    const studentIdEl = document.getElementById('student-id');
+    const buildTimeEl = document.getElementById('build-time');
+
+    if (studentIdEl) studentIdEl.textContent = data.studentId || 'NOT_SET';
+    if (buildTimeEl) {
+      const buildTime = data.buildTime || 'NOT_SET';
+      if (buildTime !== 'NOT_SET') {
+        const date = new Date(buildTime);
+        buildTimeEl.textContent = date.toLocaleString('en-GB', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      } else {
+        buildTimeEl.textContent = buildTime;
+      }
+    }
+  } catch {
+    // silently fail
   }
 }
 
